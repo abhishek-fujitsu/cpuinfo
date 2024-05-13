@@ -6,6 +6,11 @@
 #include <stdbool.h>
 #endif
 
+#ifdef __linux__
+#include <sys/prctl.h>
+#endif
+#include <stdio.h>
+
 #ifdef __APPLE__
 #include <TargetConditionals.h>
 #endif
@@ -2039,6 +2044,51 @@ static inline bool cpuinfo_has_arm_sve2(void) {
 	return cpuinfo_isa.sve2;
 #else
 	return false;
+#endif
+}
+
+static bool prctl_called = false;
+static int cached_sve_vl = -1;
+#define PR_SVE_GET_VL 51
+#define PR_SVE_VL_LEN_MASK 0xffff
+static void initialize_sve_vector_length() {
+    if (!prctl_called) {
+        int ret = prctl(PR_SVE_GET_VL);
+        prctl_called = true;
+        if (ret < 0) {
+            perror("prctl(PR_SVE_GET_VL) failed");
+            cached_sve_vl = 0;  // Assume no SVE support if the call fails
+        } else {
+            // Mask out the SVE vector length bits
+            cached_sve_vl = ret & PR_SVE_VL_LEN_MASK;
+        }
+    }
+}
+
+static inline bool cpuinfo_has_arm_sve128(void) {
+#if CPUINFO_ARCH_ARM || CPUINFO_ARCH_ARM64
+    initialize_sve_vector_length();
+    return (cpuinfo_isa.sve || cpuinfo_isa.sve2) && (cached_sve_vl >= 16);
+#else
+    return false;
+#endif
+}
+
+static inline bool cpuinfo_has_arm_sve256(void) {
+#if CPUINFO_ARCH_ARM || CPUINFO_ARCH_ARM64
+    initialize_sve_vector_length();
+    return (cpuinfo_isa.sve || cpuinfo_isa.sve2) && (cached_sve_vl >= 32);
+#else
+    return false;
+#endif
+}
+
+static inline bool cpuinfo_has_arm_sve512(void) {
+#if CPUINFO_ARCH_ARM || CPUINFO_ARCH_ARM64
+    initialize_sve_vector_length();
+    return (cpuinfo_isa.sve || cpuinfo_isa.sve2) && (cached_sve_vl >= 64);
+#else
+    return false;
 #endif
 }
 
